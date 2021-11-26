@@ -5,6 +5,7 @@ matplotlib
 seaborn
 PyYAML
 tqdm
+mlflow
 
 # Terminal.app
 

@@ -6,6 +6,8 @@ import argparse
 import logging
 import os
 
+import mlflow.tensorflow
+
 
 logging.basicConfig(
     filename=os.path.join("logs", 'running_logs.log'),
@@ -13,6 +15,9 @@ logging.basicConfig(
     format="[%(asctime)s: %(levelname)s: %(module)-20s]: %(message)s",
     filemode="a"
 )
+
+
+mlflow.tensorflow.autolog()
 
 
 def training(config_path: str, stage: str) -> None:
@@ -40,45 +45,50 @@ def training(config_path: str, stage: str) -> None:
     logging.info("Getting data..")
     (X_train, y_train), (X_valid, y_valid), (X_test, y_test) = get_prepared_data(validation_datasize)
 
+    mlflow.set_tracking_uri("http://127.0.0.1:1234")
+    mlflow.set_experiment("MLFlow_TF_Autolog")
+
     if stage == 'ALL':
         for in_stage in ["BASE_MODEL", "KERNEL_INIT_MODEL", "BN_BEFORE_MODEL", "BN_AFTER_MODEL"]:
-            logging.info("-" * 50)
-            logging.info(f"Training Started for {in_stage}..")
-            logging.info(f"Getting compiled ann model for {in_stage}..")
+            with mlflow.start_run(run_name=f"{in_stage}") as run:
+                logging.info("-" * 50)
+                logging.info(f"Training Started for {in_stage}..")
+                logging.info(f"Getting compiled ann model for {in_stage}..")
 
-            model_ann = get_prepared_model(in_stage, no_classes, input_shape, loss, optimizer, metrics)
+                model_ann = get_prepared_model(in_stage, no_classes, input_shape, loss, optimizer, metrics)
+                model_ann.summary(print_fn=logging.info)
+                callback_list = get_callbacks(checkpoint_dir, tensorboard_logs, in_stage)
+                logging.info(f"Model training start for {in_stage}..")
+                history = model_ann.fit(X_train, y_train, epochs=EPOCHS, validation_data=(X_valid, y_valid),
+                                        callbacks=callback_list)
+                logging.info(f"Model training ends for {in_stage}..")
+                logging.info(f"Plot Loss/Accuracy curves for {in_stage} ..")
+                save_history_plot(history, plot_dir, in_stage)
+
+                model_suffix = get_unique_name(in_stage)
+                save_model(model_dir, model_ann, model_suffix)
+                logging.info(f"Model saved successfully for {in_stage}..")
+                logging.info("-" * 50)
+    else:
+        with mlflow.start_run(run_name=f"{stage}") as run:
+            logging.info("-" * 50)
+            logging.info(f"Training Started for {stage} ..")
+            logging.info(f"Getting compiled ann model for {stage}..")
+
+            model_ann = get_prepared_model(stage, no_classes, input_shape, loss, optimizer, metrics)
             model_ann.summary(print_fn=logging.info)
-            callback_list = get_callbacks(checkpoint_dir, tensorboard_logs, in_stage)
-            logging.info(f"Model training start for {in_stage}..")
+            callback_list = get_callbacks(checkpoint_dir, tensorboard_logs, stage)
+            logging.info(f"Model training start for {stage}..")
             history = model_ann.fit(X_train, y_train, epochs=EPOCHS, validation_data=(X_valid, y_valid),
                                     callbacks=callback_list)
-            logging.info(f"Model training ends for {in_stage}..")
-            logging.info(f"Plot Loss/Accuracy curves for {in_stage} ..")
-            save_history_plot(history, plot_dir, in_stage)
+            logging.info(f"Model training ends for {stage} ..")
+            logging.info(f"Plot Loss/Accuracy curves for {stage}..")
+            save_history_plot(history, plot_dir, stage)
 
-            model_suffix = get_unique_name(in_stage)
+            model_suffix = get_unique_name(stage)
             save_model(model_dir, model_ann, model_suffix)
-            logging.info(f"Model saved successfully for {in_stage}..")
+            logging.info(f"Model saved successfully for {stage}..")
             logging.info("-" * 50)
-    else:
-        logging.info("-" * 50)
-        logging.info(f"Training Started for {stage} ..")
-        logging.info(f"Getting compiled ann model for {stage}..")
-
-        model_ann = get_prepared_model(stage, no_classes, input_shape, loss, optimizer, metrics)
-        model_ann.summary(print_fn=logging.info)
-        callback_list = get_callbacks(checkpoint_dir, tensorboard_logs, stage)
-        logging.info(f"Model training start for {stage}..")
-        history = model_ann.fit(X_train, y_train, epochs=EPOCHS, validation_data=(X_valid, y_valid),
-                                callbacks=callback_list)
-        logging.info(f"Model training ends for {stage} ..")
-        logging.info(f"Plot Loss/Accuracy curves for {stage}..")
-        save_history_plot(history, plot_dir, stage)
-
-        model_suffix = get_unique_name(stage)
-        save_model(model_dir, model_ann, model_suffix)
-        logging.info(f"Model saved successfully for {stage}..")
-        logging.info("-" * 50)
     logging.info("=" * 50)
 
 

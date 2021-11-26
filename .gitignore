@@ -131,4 +131,7 @@ dmypy.json
 # Project log folders
 artifacts/
 tensorboard_logs/
+mlruns/
 logs/
+.idea/
+mlflow.db
